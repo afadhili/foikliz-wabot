@@ -125,6 +125,20 @@ Model resmi Ollama Gemma 3 saat ini tidak menyediakan tag `gemma3:8b` (ukuran ya
 
 Gunakan `transcribe URL` untuk membuat transkrip dari video publik YouTube, Instagram, atau TikTok. Transkripsi berjalan lokal dengan `whisper.cpp` model multilingual `base`; tidak memerlukan `OPENAI_API_KEY` dan audio tidak dikirim ke API transkripsi eksternal. Model base membutuhkan sekitar 142 MiB penyimpanan dan 388 MB RAM menurut dokumentasi whisper.cpp. Proses di CPU bisa lebih lambat daripada durasi video, tergantung perangkat.
 
+## Docker Compose
+
+Compose menjalankan bot, Ollama, dan otomatis menarik model yang dipilih di `OLLAMA_MODEL` (default `gemma3:4b`). Image bot juga membangun whisper.cpp serta menyertakan model transkripsi `base`; proses build pertama membutuhkan koneksi internet dan dapat memakan waktu.
+
+```sh
+cp .env.example .env
+# Edit .env: pilih AUTH_METHOD=qr atau pairing, dan isi PHONE_NUMBER bila pairing
+
+docker compose up --build -d
+docker compose logs -f bot
+```
+
+QR login muncul di log service `bot`. Ollama hanya dipublikasikan ke host pada `127.0.0.1:11434`; bot mengaksesnya melalui network Compose. Sesi WhatsApp, memory mode AI, unduhan, dan model Ollama disimpan pada named volumes. `docker compose down` mempertahankan data; `docker compose down -v` menghapus semua volume termasuk sesi dan model.
+
 ## Pengembangan
 
 ```sh
