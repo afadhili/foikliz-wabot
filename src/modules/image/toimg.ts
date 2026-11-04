@@ -6,12 +6,6 @@ export const meta: ModuleMeta = {
   name: "toimg",
   description: "Ubah sticker menjadi gambar PNG.",
   usage: "(reply sticker)",
-  ai: {
-    description:
-      "Ubah sticker pada pesan saat ini atau sticker yang dikutip menjadi PNG.",
-    parameters: { type: "object", properties: {} },
-    requirements: ["Pesan atau pesan kutipan harus berisi sticker."],
-  },
 };
 
 async function convertSticker(message: ParsedMessage): Promise<string> {
@@ -26,12 +20,6 @@ async function convertSticker(message: ParsedMessage): Promise<string> {
   const image = await convertImageWithFfmpeg(media, "png");
   await message.reply({ image, mimetype: "image/png" });
   return "Sticker berhasil diubah menjadi gambar.";
-}
-
-export async function executeAI(context: {
-  message: ParsedMessage;
-}): Promise<string> {
-  return convertSticker(context.message);
 }
 
 export const onMessage: MessageModule = async ({ message }) => {

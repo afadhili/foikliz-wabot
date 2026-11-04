@@ -6,16 +6,9 @@ const SUPPORTED_MEDIA_TYPES = new Set(["imageMessage", "stickerMessage"]);
 
 export const meta: ModuleMeta = {
   name: "sticker",
+  aliases: ["s"],
   description: "Ubah gambar menjadi sticker terkompresi.",
   usage: "(kirim bersama gambar atau reply gambar)",
-  ai: {
-    description:
-      "Ubah gambar pada pesan saat ini atau gambar yang dikutip menjadi sticker WebP.",
-    parameters: { type: "object", properties: {} },
-    requirements: [
-      "Pesan atau pesan kutipan harus berisi gambar atau sticker.",
-    ],
-  },
 };
 
 async function makeSticker(message: ParsedMessage): Promise<string> {
@@ -41,19 +34,19 @@ async function makeSticker(message: ParsedMessage): Promise<string> {
   return "Sticker berhasil dibuat.";
 }
 
-export async function executeAI(context: {
-  message: ParsedMessage;
-}): Promise<string> {
-  return makeSticker(context.message);
-}
-
 export const onMessage: MessageModule = async ({ message }) => {
-  if (message.command()?.name !== "sticker") return;
+  const command = message.command();
+  if (command?.name !== "sticker" && command?.name !== "s") return;
   try {
+    await message.react("⏳");
     const result = await makeSticker(message);
-    if (result !== "Sticker berhasil dibuat.") await message.reply(result);
+    if (result !== "Sticker berhasil dibuat.") {
+      await message.reply(result);
+      await message.react("👌");
+    }
   } catch (error) {
     console.error("Gagal mengubah media menjadi sticker:", error);
     await message.reply("Gagal mengubah media. Format yang didukung: gambar.");
+    await message.react("❌");
   }
 };

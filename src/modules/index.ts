@@ -1,5 +1,5 @@
 import { readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import type { ParsedMessage } from "../parser";
@@ -8,24 +8,10 @@ export interface ModuleContext {
   message: ParsedMessage;
   socket: WAMessageSocket;
   modules: ModuleMeta[];
-  aiTools: LoadedMessageModule[];
 }
 
 export interface WAMessageSocket {
   sendMessage: (jid: string, content: { text: string }) => Promise<unknown>;
-}
-
-export interface AIParameterSchema {
-  type: "object";
-  properties: Record<
-    string,
-    {
-      type: "string" | "number" | "integer" | "boolean";
-      description: string;
-      enum?: Array<string | number | boolean>;
-    }
-  >;
-  required?: string[];
 }
 
 export interface ModuleMeta {
@@ -34,29 +20,20 @@ export interface ModuleMeta {
   description: string;
   usage?: string;
   aliases?: string[];
-  ai?: {
-    description: string;
-    parameters: AIParameterSchema;
-    requirements?: string[];
-  };
+  /** Otomatis diisi dari folder module saat loader dijalankan. */
+  category?: string;
 }
 
 export type MessageModule = (context: ModuleContext) => void | Promise<void>;
-export type AIModuleHandler = (
-  context: Pick<ModuleContext, "message" | "modules">,
-  args: Record<string, unknown>,
-) => Promise<string>;
 
 export interface LoadedMessageModule {
   onMessage: MessageModule;
-  executeAI?: AIModuleHandler;
   meta?: ModuleMeta;
 }
 
 type ModuleExports = {
   default?: MessageModule;
   onMessage?: MessageModule;
-  executeAI?: AIModuleHandler;
   meta?: ModuleMeta;
 };
 
@@ -98,7 +75,17 @@ export async function loadMessageModules(): Promise<LoadedMessageModule[]> {
       console.warn(`Metadata module tidak valid: ${file}`);
       continue;
     }
-    modules.push({ onMessage, executeAI: loaded.executeAI, meta: loaded.meta });
+    const moduleMeta = loaded.meta
+      ? {
+          ...loaded.meta,
+          category:
+            relative(directory, dirname(file))
+              .split(sep)
+              .filter(Boolean)
+              .join(" / ") || "general",
+        }
+      : undefined;
+    modules.push({ onMessage, meta: moduleMeta });
   }
 
   return modules;
@@ -106,12 +93,11 @@ export async function loadMessageModules(): Promise<LoadedMessageModule[]> {
 
 export async function dispatchMessage(
   modules: LoadedMessageModule[],
-  context: Omit<ModuleContext, "modules" | "aiTools">,
+  context: Omit<ModuleContext, "modules">,
 ): Promise<void> {
   const moduleContext = {
     ...context,
     modules: modules.flatMap((module) => (module.meta ? [module.meta] : [])),
-    aiTools: modules.filter((module) => module.meta?.ai && module.executeAI),
   };
 
   for (const module of modules) {

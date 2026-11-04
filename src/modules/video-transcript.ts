@@ -18,24 +18,6 @@ export const meta: ModuleMeta = {
   description:
     "Transkripsikan video YouTube, Instagram, atau TikTok menjadi teks.",
   usage: "URL video",
-  ai: {
-    description:
-      "Unduh audio dari video publik lalu transkripsikan secara lokal.",
-    parameters: {
-      type: "object",
-      properties: {
-        url: {
-          type: "string",
-          description: "URL video yang ingin ditranskripsikan.",
-        },
-      },
-      required: ["url"],
-    },
-    requirements: [
-      "URL harus berasal dari YouTube, Instagram, atau TikTok.",
-      "yt-dlp, FFmpeg, whisper-cli, dan model lokal harus tersedia.",
-    ],
-  },
 };
 
 function splitText(text: string): string[] {
@@ -75,13 +57,6 @@ async function transcribeUrl(
     await message.reply(`${heading}${parts[index]}`);
   }
   return "Transkripsi selesai dan hasilnya sudah dikirim.";
-}
-
-export async function executeAI(
-  context: { message: ParsedMessage },
-  args: Record<string, unknown>,
-): Promise<string> {
-  return transcribeUrl(context.message, String(args.url ?? ""));
 }
 
 export const onMessage: MessageModule = async ({ message }) => {

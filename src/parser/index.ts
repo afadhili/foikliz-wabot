@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import {
   downloadMediaMessage,
   extractMessageContent,
@@ -10,6 +11,7 @@ import {
   type WAMessage,
   type WASocket,
 } from "@whiskeysockets/baileys";
+import sharp from "sharp";
 
 const MEDIA_TYPES = [
   "imageMessage",
@@ -22,9 +24,7 @@ const MEDIA_TYPES = [
 export interface ParsedCommand {
   name: string;
   args: string[];
-  /** Prefix yang digunakan untuk command ini. */
   prefix: string;
-  /** Semua argumen digabung jadi satu string. */
   rest: string;
 }
 
@@ -35,6 +35,73 @@ export function getCommandPrefixes(): string[] {
   return configured?.length ? [...new Set(configured)] : ["."];
 }
 
+export interface BannerOptions {
+  title?: string;
+  body?: string;
+  sourceUrl?: string;
+  imagePath?: string;
+}
+
+const BANNER_DEFAULTS = {
+  title: () => process.env.BOT_NAME ?? "Relayz Bot",
+  body: () => process.env.BOT_TAGLINE ?? "afadhili",
+  sourceUrl: () => process.env.BOT_URL ?? "https://github.com/afadhili",
+  imagePath: () =>
+    process.env.BANNER_PATH ?? join(process.cwd(), "assets", "banner.png"),
+};
+
+const thumbnailCache = new Map<string, Promise<Buffer | null>>();
+
+function loadThumbnail(path: string): Promise<Buffer | null> {
+  let cached = thumbnailCache.get(path);
+  if (!cached) {
+    cached = (async () => {
+      try {
+        const file = Bun.file(path);
+        if (!(await file.exists())) return null;
+        const buffer = await sharp(await file.arrayBuffer())
+          .resize(600, 315, { fit: "cover" })
+          .jpeg({ quality: 60, mozjpeg: true })
+          .toBuffer();
+        console.log(`Thumbnail banner: ${Math.round(buffer.length / 1024)} KB`);
+        return buffer;
+      } catch (error) {
+        console.error("Gagal memuat banner:", error);
+        return null;
+      }
+    })();
+    thumbnailCache.set(path, cached);
+  }
+  return cached;
+}
+
+const BANNER_MODE = process.env.BANNER_MODE ?? "full";
+
+async function bannerContent(
+  text: string,
+  banner: BannerOptions = {},
+): Promise<AnyMessageContent> {
+  const thumbnail =
+    BANNER_MODE === "nothumb"
+      ? null
+      : await loadThumbnail(banner.imagePath ?? BANNER_DEFAULTS.imagePath());
+
+  return {
+    text,
+    contextInfo: {
+      externalAdReply: {
+        title: banner.title ?? BANNER_DEFAULTS.title(),
+        body: banner.body ?? BANNER_DEFAULTS.body(),
+        sourceUrl: banner.sourceUrl ?? BANNER_DEFAULTS.sourceUrl(),
+        mediaType: 1,
+        renderLargerThumbnail: BANNER_MODE !== "small",
+        showAdAttribution: false,
+        ...(thumbnail ? { thumbnail } : {}),
+      },
+    },
+  };
+}
+
 export interface QuotedMessage {
   id?: string;
   sender?: string;
@@ -42,7 +109,6 @@ export interface QuotedMessage {
   text: string;
   hasMedia: boolean;
   mimetype?: string;
-  /** WAMessage sintetis, bisa langsung dipakai downloadMediaMessage. */
   raw: WAMessage;
 }
 
@@ -68,6 +134,18 @@ export interface ParsedMessage {
   ): Promise<WAMessage | undefined>;
   send(
     content: string | AnyMessageContent,
+    options?: MiscMessageGenerationOptions,
+  ): Promise<WAMessage | undefined>;
+  /** Balas (quote) dengan teks dan banner sebagai kartu link preview. */
+  replyWithBanner(
+    text: string,
+    banner?: BannerOptions,
+    options?: MiscMessageGenerationOptions,
+  ): Promise<WAMessage | undefined>;
+  /** Kirim (tanpa quote) teks dan banner sebagai kartu link preview. */
+  sendWithBanner(
+    text: string,
+    banner?: BannerOptions,
     options?: MiscMessageGenerationOptions,
   ): Promise<WAMessage | undefined>;
   mention(text: string, jids?: string[]): Promise<WAMessage | undefined>;
@@ -171,7 +249,6 @@ export function parsedMessage(
     }
   };
 
-  // Cache per pesan supaya groupMetadata tidak di-fetch berulang.
   let groupMeta: Promise<GroupMetadata | null> | undefined;
 
   const parsed: ParsedMessage = {
@@ -195,6 +272,15 @@ export function parsedMessage(
 
     send: (message, options) =>
       sock.sendMessage(chatId, toContent(message), options),
+
+    replyWithBanner: async (text, banner, options) =>
+      sock.sendMessage(chatId, await bannerContent(text, banner), {
+        quoted: msg,
+        ...options,
+      }),
+
+    sendWithBanner: async (text, banner, options) =>
+      sock.sendMessage(chatId, await bannerContent(text, banner), options),
 
     mention: (text, jids = [sender]) =>
       sock.sendMessage(chatId, { text, mentions: jids }),

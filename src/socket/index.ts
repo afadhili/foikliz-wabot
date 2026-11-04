@@ -80,17 +80,18 @@ export class WhatsAppSocket {
       this.connect();
     });
 
-    socket.ev.on("messages.upsert", ({ type, messages }) => {
+    socket.ev.on("messages.upsert", async ({ type, messages }) => {
       if (type !== "notify") return;
 
       for (const message of messages) {
         const parsed = parsedMessage(socket, message);
         if (!parsed || parsed.fromMe) continue;
+        await parsed.read();
 
+        if (parsed.quoted) console.log(`\n ↶ reply ke: ${parsed.quoted.text}`);
         console.log(
-          `[${parsed.isGroup ? "GROUP" : "DM"}] ${parsed.pushName} (${parsed.sender}): ${parsed.text}`,
+          `${!parsed.quoted ? "\n" : ""}[${parsed.isGroup ? "GROUP" : "DM"}] ${parsed.pushName} (${parsed.sender}): ${parsed.text}`,
         );
-        if (parsed.quoted) console.log(`  ↳ reply ke: ${parsed.quoted.text}`);
 
         void dispatchMessage(this.messageModules, { message: parsed, socket });
       }
