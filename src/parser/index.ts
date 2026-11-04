@@ -4,6 +4,7 @@ import {
   extractMessageContent,
   getContentType,
   jidNormalizedUser,
+  prepareWAMessageMedia,
   proto,
   type AnyMessageContent,
   type GroupMetadata,
@@ -45,61 +46,81 @@ export interface BannerOptions {
 const BANNER_DEFAULTS = {
   title: () => process.env.BOT_NAME ?? "Relayz Bot",
   body: () => process.env.BOT_TAGLINE ?? "afadhili",
-  sourceUrl: () => process.env.BOT_URL ?? "https://github.com/afadhili",
+  sourceUrl: () => process.env.BOT_URL ?? "https://www.aifadhili.site",
   imagePath: () =>
     process.env.BANNER_PATH ?? join(process.cwd(), "assets", "banner.png"),
 };
 
-const thumbnailCache = new Map<string, Promise<Buffer | null>>();
+interface BannerImages {
+  small: Buffer;
+  large: Buffer;
+}
 
-function loadThumbnail(path: string): Promise<Buffer | null> {
-  let cached = thumbnailCache.get(path);
+const imageCache = new Map<string, Promise<BannerImages | null>>();
+
+function loadBannerImages(path: string): Promise<BannerImages | null> {
+  let cached = imageCache.get(path);
   if (!cached) {
     cached = (async () => {
       try {
         const file = Bun.file(path);
         if (!(await file.exists())) return null;
-        const buffer = await sharp(await file.arrayBuffer())
-          .resize(600, 315, { fit: "cover" })
-          .jpeg({ quality: 60, mozjpeg: true })
-          .toBuffer();
-        console.log(`Thumbnail banner: ${Math.round(buffer.length / 1024)} KB`);
-        return buffer;
+        const source = Buffer.from(await file.arrayBuffer());
+        const [small, large] = await Promise.all([
+          sharp(source)
+            .resize(300, 157, { fit: "cover" })
+            .jpeg({ quality: 70 })
+            .toBuffer(),
+          sharp(source)
+            .resize(1200, 630, { fit: "cover" })
+            .jpeg({ quality: 80 })
+            .toBuffer(),
+        ]);
+        return { small, large };
       } catch (error) {
         console.error("Gagal memuat banner:", error);
         return null;
       }
     })();
-    thumbnailCache.set(path, cached);
+    imageCache.set(path, cached);
   }
   return cached;
 }
 
-const BANNER_MODE = process.env.BANNER_MODE ?? "full";
-
 async function bannerContent(
+  sock: WASocket,
   text: string,
   banner: BannerOptions = {},
 ): Promise<AnyMessageContent> {
-  const thumbnail =
-    BANNER_MODE === "nothumb"
-      ? null
-      : await loadThumbnail(banner.imagePath ?? BANNER_DEFAULTS.imagePath());
+  const url = banner.sourceUrl ?? BANNER_DEFAULTS.sourceUrl();
+  const images = await loadBannerImages(
+    banner.imagePath ?? BANNER_DEFAULTS.imagePath(),
+  );
+
+  let highQualityThumbnail: proto.Message.IImageMessage | undefined;
+  if (images) {
+    try {
+      const { imageMessage } = await prepareWAMessageMedia(
+        { image: images.large },
+        { upload: sock.waUploadToServer, mediaTypeOverride: "thumbnail-link" },
+      );
+      highQualityThumbnail = imageMessage ?? undefined;
+    } catch (error) {
+      console.error("Gagal mengunggah thumbnail besar:", error);
+    }
+  }
 
   return {
-    text,
-    contextInfo: {
-      externalAdReply: {
-        title: banner.title ?? BANNER_DEFAULTS.title(),
-        body: banner.body ?? BANNER_DEFAULTS.body(),
-        sourceUrl: banner.sourceUrl ?? BANNER_DEFAULTS.sourceUrl(),
-        mediaType: 1,
-        renderLargerThumbnail: BANNER_MODE !== "small",
-        showAdAttribution: false,
-        ...(thumbnail ? { thumbnail } : {}),
-      },
+    text: `${text}\n\n${url}`,
+    linkPreview: {
+      "canonical-url": url,
+      "matched-text": url,
+      title: banner.title ?? BANNER_DEFAULTS.title(),
+      description: banner.body ?? BANNER_DEFAULTS.body(),
+      ...(images ? { jpegThumbnail: images.small } : {}),
+      ...(highQualityThumbnail ? { highQualityThumbnail } : {}),
     },
-  };
+  } as AnyMessageContent;
 }
 
 export interface QuotedMessage {
@@ -117,7 +138,10 @@ export interface ParsedMessage {
   chatId: string;
   isGroup: boolean;
   fromMe: boolean;
+  /** JID pengirim yang sudah dinormalisasi. */
   sender: string;
+  /** Bagian numerik pengirim; kosong jika JID tidak memuat nomor telepon. */
+  senderNumber: string;
   pushName: string;
   timestamp: number;
   type: string;
@@ -209,6 +233,7 @@ export function parsedMessage(
   const media = (content as any)[type];
 
   const sender = rawSender ? jidNormalizedUser(rawSender) : "";
+  const senderNumber = sender.split("@")[0]?.replace(/\D/g, "") ?? "";
   const hasMedia = MEDIA_TYPES.includes(type);
 
   const quoted: QuotedMessage | undefined = context?.quotedMessage
@@ -257,6 +282,7 @@ export function parsedMessage(
     isGroup,
     fromMe: !!msg.key.fromMe,
     sender,
+    senderNumber,
     pushName: msg.pushName ?? "",
     timestamp: Number(msg.messageTimestamp ?? 0),
     type,
@@ -274,13 +300,17 @@ export function parsedMessage(
       sock.sendMessage(chatId, toContent(message), options),
 
     replyWithBanner: async (text, banner, options) =>
-      sock.sendMessage(chatId, await bannerContent(text, banner), {
+      sock.sendMessage(chatId, await bannerContent(sock, text, banner), {
         quoted: msg,
         ...options,
       }),
 
     sendWithBanner: async (text, banner, options) =>
-      sock.sendMessage(chatId, await bannerContent(text, banner), options),
+      sock.sendMessage(
+        chatId,
+        await bannerContent(sock, text, banner),
+        options,
+      ),
 
     mention: (text, jids = [sender]) =>
       sock.sendMessage(chatId, { text, mentions: jids }),

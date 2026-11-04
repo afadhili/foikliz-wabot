@@ -5,6 +5,7 @@ services:
       dockerfile: Dockerfile
     env_file:
       - .env
+    init: true
     environment:
       YTDLP_PATH: /opt/yt-dlp/bin/yt-dlp
       FFMPEG_PATH: /usr/bin/ffmpeg
@@ -12,11 +13,10 @@ services:
       WHISPER_MODEL_PATH: /opt/whisper/models/ggml-base.bin
     volumes:
       - bot_auth:/app/auth_info
-
       - bot_downloads:/app/downloads
     restart: unless-stopped
+    stop_grace_period: 15s
 
 volumes:
   bot_auth:
-
   bot_downloads:

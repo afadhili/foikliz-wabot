@@ -15,16 +15,27 @@ export interface WAMessageSocket {
 }
 
 export interface ModuleMeta {
-  /** Nama command/module, tanpa prefix. */
   name: string;
   description: string;
+  active: boolean;
   usage?: string;
   aliases?: string[];
-  /** Otomatis diisi dari folder module saat loader dijalankan. */
   category?: string;
+  ownerOnly?: boolean;
 }
 
 export type MessageModule = (context: ModuleContext) => void | Promise<void>;
+
+export function isOwnerNumber(sender: string): boolean {
+  const senderNumber = sender.split("@")[0]?.replace(/\D/g, "");
+  if (!senderNumber) return false;
+
+  return (process.env.OWNER_NUMBER ?? "")
+    .split(",")
+    .map((number) => number.replace(/\D/g, ""))
+    .filter(Boolean)
+    .includes(senderNumber);
+}
 
 export interface LoadedMessageModule {
   onMessage: MessageModule;
@@ -71,20 +82,27 @@ export async function loadMessageModules(): Promise<LoadedMessageModule[]> {
     const onMessage = loaded.onMessage ?? loaded.default;
     if (typeof onMessage !== "function") continue;
 
-    if (loaded.meta && (!loaded.meta.name || !loaded.meta.description)) {
+    if (
+      !loaded.meta ||
+      !loaded.meta.name ||
+      !loaded.meta.description ||
+      typeof loaded.meta.active !== "boolean"
+    ) {
       console.warn(`Metadata module tidak valid: ${file}`);
       continue;
     }
-    const moduleMeta = loaded.meta
-      ? {
-          ...loaded.meta,
-          category:
-            relative(directory, dirname(file))
-              .split(sep)
-              .filter(Boolean)
-              .join(" / ") || "general",
-        }
-      : undefined;
+    if (!loaded.meta.active) continue;
+
+    const moduleMeta = {
+      ...loaded.meta,
+      category:
+        loaded.meta.category ??
+        (relative(directory, dirname(file))
+          .split(sep)
+          .filter(Boolean)
+          .join(" / ") ||
+          "general"),
+    };
     modules.push({ onMessage, meta: moduleMeta });
   }
 
@@ -95,12 +113,16 @@ export async function dispatchMessage(
   modules: LoadedMessageModule[],
   context: Omit<ModuleContext, "modules">,
 ): Promise<void> {
+  const owner = isOwnerNumber(context.message.sender);
   const moduleContext = {
     ...context,
-    modules: modules.flatMap((module) => (module.meta ? [module.meta] : [])),
+    modules: modules.flatMap((module) =>
+      module.meta && (owner || !module.meta.ownerOnly) ? [module.meta] : [],
+    ),
   };
 
   for (const module of modules) {
+    if (module.meta?.ownerOnly && !owner) continue;
     try {
       await module.onMessage(moduleContext);
     } catch (error) {

@@ -2,6 +2,9 @@ import type { MessageModule, ModuleMeta } from "../index";
 
 export const meta: ModuleMeta = {
   name: "ping",
+  active: true,
+  ownerOnly: true,
+  category: "owner",
   description: "Cek respons bot.",
 };
 

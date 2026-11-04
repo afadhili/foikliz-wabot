@@ -4,6 +4,7 @@ import { convertImageWithFfmpeg } from "../utils/ffmpeg";
 
 export const meta: ModuleMeta = {
   name: "toimg",
+  active: true,
   description: "Ubah sticker menjadi gambar PNG.",
   usage: "(reply sticker)",
 };

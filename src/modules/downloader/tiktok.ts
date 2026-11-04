@@ -8,6 +8,7 @@ import {
 
 export const meta: ModuleMeta = {
   name: "tiktok",
+  active: true,
   aliases: ["tt"],
   description: "Unduh video atau audio dari TikTok.",
   usage: "URL [mp4|mp3]",

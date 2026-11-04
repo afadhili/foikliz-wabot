@@ -6,6 +6,7 @@ const SUPPORTED_MEDIA_TYPES = new Set(["imageMessage", "stickerMessage"]);
 
 export const meta: ModuleMeta = {
   name: "sticker",
+  active: true,
   aliases: ["s"],
   description: "Ubah gambar menjadi sticker terkompresi.",
   usage: "(kirim bersama gambar atau reply gambar)",

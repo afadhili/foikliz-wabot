@@ -9,6 +9,7 @@ const SUPPORTED_TYPES = new Set(["imageMessage"]);
 
 export const meta: ModuleMeta = {
   name: "bgremover",
+  active: true,
   aliases: ["removebg", "rbg"],
   description: "Hapus background foto dan kirim sebagai PNG transparan.",
   usage: "(kirim bersama gambar atau reply gambar)",

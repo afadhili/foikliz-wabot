@@ -11,6 +11,7 @@ type Resolution = (typeof RESOLUTIONS)[number];
 
 export const meta: ModuleMeta = {
   name: "youtube",
+  active: true,
   aliases: ["yt"],
   description: "Unduh video atau audio YouTube dengan pilihan resolusi.",
   usage: "URL [mp4|mp3] [360|480|720|1080]",
@@ -18,7 +19,7 @@ export const meta: ModuleMeta = {
 
 export const onMessage: MessageModule = async ({ message }) => {
   const command = message.command();
-  if (command?.name !== "youtube") return;
+  if (command?.name !== "youtube" && command?.name !== "yt") return;
 
   const url = command.args[0];
   const format = (command.args[1] ?? "mp4").toLowerCase() as DownloadFormat;
@@ -36,9 +37,7 @@ export const onMessage: MessageModule = async ({ message }) => {
     return;
   }
 
-  await message.reply(
-    `Sedang mengunduh YouTube ${format.toUpperCase()}${format === "mp4" ? ` ${resolution}p` : ""}...`,
-  );
+  await message.react("⏳");
   try {
     const media = await downloadMedia(url, {
       format,
@@ -50,9 +49,13 @@ export const onMessage: MessageModule = async ({ message }) => {
       format,
       `Video YouTube (${resolution}p)`,
     );
+
+    await message.react("👌");
   } catch (error) {
     await message.reply(
       `Gagal mengunduh YouTube: ${error instanceof Error ? error.message : String(error)}`,
     );
+
+    await message.react("❌");
   }
 };

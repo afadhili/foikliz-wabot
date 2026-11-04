@@ -1,7 +1,7 @@
-import type { ParsedMessage } from "../parser";
-import type { MessageModule, ModuleMeta } from "./index";
-import { downloadMedia, isAllowedUrl } from "./downloader/common";
-import { transcribeAudio } from "./utils/transcription";
+import type { ParsedMessage } from "../../parser";
+import type { MessageModule, ModuleMeta } from "../index";
+import { downloadMedia, isAllowedUrl } from "./common";
+import { transcribeAudio } from "../utils/transcription";
 
 const VIDEO_DOMAINS = [
   "youtube.com",
@@ -15,6 +15,7 @@ const MAX_MESSAGE_LENGTH = 3500;
 
 export const meta: ModuleMeta = {
   name: "transcribe",
+  active: true,
   description:
     "Transkripsikan video YouTube, Instagram, atau TikTok menjadi teks.",
   usage: "URL video",

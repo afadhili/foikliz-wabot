@@ -3,6 +3,7 @@ import type { MessageModule, ModuleMeta } from "../index";
 
 export const meta: ModuleMeta = {
   name: "help",
+  active: true,
   description: "Tampilkan daftar command yang tersedia.",
   usage: "[nama command]",
 };
@@ -78,13 +79,12 @@ export const onMessage: MessageModule = async ({ message, modules }) => {
     });
 
   const header = [
-    "*Relayz*",
+    "*Relayz Bot*",
     `> Prefix: ${prefixes.join("  ")}`,
     `> Detail: ${prefix}help <nama command>`,
   ].join("\n");
 
   await message.sendWithBanner(
-    `${header}\n\n${sections.join("\n\n") || "Belum ada command yang tersedia."}` +
-      "\n\n © afadhili.",
+    `${header}\n\n${sections.join("\n\n") || "Belum ada command yang tersedia."}`,
   );
 };
