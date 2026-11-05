@@ -6,17 +6,22 @@ services:
     env_file:
       - .env
     init: true
-    environment:
-      YTDLP_PATH: /opt/yt-dlp/bin/yt-dlp
-      FFMPEG_PATH: /usr/bin/ffmpeg
-      WHISPER_CPP_PATH: /opt/whisper/build/bin/whisper-cli
-      WHISPER_MODEL_PATH: /opt/whisper/models/ggml-base.bin
     volumes:
       - bot_auth:/app/auth_info
+      - bot_managed_auth:/app/auth
       - bot_downloads:/app/downloads
+      - bot_data:/app/data
+      - type: bind
+        source: ./assets
+        target: /app/assets
+        read_only: true
+        bind:
+          create_host_path: false
     restart: unless-stopped
     stop_grace_period: 15s
 
 volumes:
   bot_auth:
+  bot_managed_auth:
   bot_downloads:
+  bot_data:

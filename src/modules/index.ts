@@ -2,7 +2,9 @@ import { readdir } from "node:fs/promises";
 import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { jidNormalizedUser, type WASocket } from "@whiskeysockets/baileys";
 import type { ParsedMessage } from "../parser";
+import { getAnalytics } from "../analytics/store";
 
 export interface ModuleContext {
   message: ParsedMessage;
@@ -27,14 +29,35 @@ export interface ModuleMeta {
 export type MessageModule = (context: ModuleContext) => void | Promise<void>;
 
 export function isOwnerNumber(sender: string): boolean {
-  const senderNumber = sender.split("@")[0]?.replace(/\D/g, "");
-  if (!senderNumber) return false;
-
+  if (!/^\d+@s\.whatsapp\.net$/.test(sender)) return false;
+  const senderNumber = sender.split("@")[0]!;
   return (process.env.OWNER_NUMBER ?? "")
     .split(",")
     .map((number) => number.replace(/\D/g, ""))
     .filter(Boolean)
     .includes(senderNumber);
+}
+
+export async function resolveSenderJid(
+  sender: string,
+  socket: WAMessageSocket,
+): Promise<string> {
+  if (!/^\d+@lid$/.test(sender)) return sender;
+  try {
+    const phoneJid = await (
+      socket as WASocket
+    ).signalRepository.lidMapping.getPNForLID(sender);
+    return phoneJid ? jidNormalizedUser(phoneJid) : sender;
+  } catch {
+    return sender;
+  }
+}
+
+export async function isOwnerSender(
+  sender: string,
+  socket: WAMessageSocket,
+): Promise<boolean> {
+  return isOwnerNumber(await resolveSenderJid(sender, socket));
 }
 
 export interface LoadedMessageModule {
@@ -113,7 +136,9 @@ export async function dispatchMessage(
   modules: LoadedMessageModule[],
   context: Omit<ModuleContext, "modules">,
 ): Promise<void> {
-  const owner = isOwnerNumber(context.message.sender);
+  const command = context.message.command();
+  if (!command) return;
+  const owner = await isOwnerSender(context.message.sender, context.socket);
   const moduleContext = {
     ...context,
     modules: modules.flatMap((module) =>
@@ -121,15 +146,46 @@ export async function dispatchMessage(
     ),
   };
 
-  for (const module of modules) {
-    if (module.meta?.ownerOnly && !owner) continue;
+  const module = modules.find(
+    ({ meta }) =>
+      meta &&
+      (meta.name === command.name || meta.aliases?.includes(command.name)) &&
+      (owner || !meta.ownerOnly),
+  );
+  if (!module) return;
+
+  const started = performance.now();
+  let status: "ok" | "error" = "ok";
+  try {
+    await module.onMessage(moduleContext);
+  } catch (error) {
+    status = "error";
+    console.error(
+      `Module ${module.meta?.name ?? "(tanpa nama)"} gagal:`,
+      error,
+    );
     try {
-      await module.onMessage(moduleContext);
-    } catch (error) {
-      console.error(
-        `Module ${module.meta?.name ?? "(tanpa nama)"} gagal:`,
-        error,
+      getAnalytics().recordError(`command.${module.meta!.name}`, error);
+    } catch (loggingError) {
+      console.error("Gagal mencatat error modul:", loggingError);
+    }
+  } finally {
+    try {
+      const analytics = getAnalytics();
+      analytics.recordCommand({
+        name: module.meta!.name,
+        sender: context.message.sender,
+        chatId: context.message.chatId,
+        status,
+        durationMs: performance.now() - started,
+      });
+      analytics.recordActivity(
+        `command.${module.meta!.name}`,
+        context.message.chatId,
+        context.message.sender,
       );
+    } catch (loggingError) {
+      console.error("Gagal mencatat statistik command:", loggingError);
     }
   }
 }

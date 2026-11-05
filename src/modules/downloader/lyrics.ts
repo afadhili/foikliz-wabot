@@ -1,4 +1,5 @@
 import type { MessageModule, ModuleMeta } from "../index";
+import { cachedApi, monitorApiCall } from "../../analytics/runtime";
 
 const MAX_MESSAGE_LENGTH = 3_300;
 const MAX_LYRICS_LENGTH = 24_000;
@@ -45,14 +46,21 @@ interface LyricsResult {
 }
 
 async function fetchJson<T>(url: URL): Promise<T> {
-  const response = await fetch(url, {
-    headers: { "User-Agent": "FoiklizWabot/1.0 (lyrics lookup)" },
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  });
-  if (!response.ok) {
-    throw new Error(`Penyedia lirik merespons HTTP ${response.status}.`);
-  }
-  return (await response.json()) as T;
+  return cachedApi(url.toString(), 6 * 60 * 60_000, () =>
+    monitorApiCall(
+      url.hostname === "lrclib.net" ? "lrclib" : "netease",
+      async () => {
+        const response = await fetch(url, {
+          headers: { "User-Agent": "FoiklizWabot/1.0 (lyrics lookup)" },
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        });
+        if (!response.ok) {
+          throw new Error(`Penyedia lirik merespons HTTP ${response.status}.`);
+        }
+        return (await response.json()) as T;
+      },
+    ),
+  );
 }
 
 async function searchLrclib(query: string): Promise<LyricsResult | null> {

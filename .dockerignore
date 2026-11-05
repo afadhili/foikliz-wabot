@@ -4,5 +4,7 @@
 node_modules/
 .tools/
 auth_info/
+auth/
+data/
 
 downloads/

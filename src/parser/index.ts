@@ -64,7 +64,12 @@ function loadBannerImages(path: string): Promise<BannerImages | null> {
     cached = (async () => {
       try {
         const file = Bun.file(path);
-        if (!(await file.exists())) return null;
+        if (!(await file.exists())) {
+          console.warn(
+            `Banner tidak ditemukan di ${path}. Periksa BANNER_PATH dan mount assets.`,
+          );
+          return null;
+        }
         const source = Buffer.from(await file.arrayBuffer());
         const [small, large] = await Promise.all([
           sharp(source)
@@ -347,10 +352,21 @@ export function parsedMessage(
       const meta = await parsed.getGroupMetadata();
       if (!meta) return false;
       const target = jidNormalizedUser(jid);
+      const ids = new Set([target]);
+      try {
+        const mapped = target.endsWith("@lid")
+          ? await sock.signalRepository.lidMapping.getPNForLID(target)
+          : await sock.signalRepository.lidMapping.getLIDForPN(target);
+        if (mapped) ids.add(jidNormalizedUser(mapped));
+      } catch {
+        // Tetap gunakan JID asli ketika pemetaan LID/nomor tidak tersedia.
+      }
       return meta.participants.some(
-        (p: any) =>
-          (jidNormalizedUser(p.id) === target || p.phoneNumber === target) &&
-          !!p.admin,
+        (p) =>
+          !!(p.admin || p.isAdmin || p.isSuperAdmin) &&
+          [p.id, p.lid, p.phoneNumber].some(
+            (id) => id && ids.has(jidNormalizedUser(id)),
+          ),
       );
     },
 

@@ -1,14 +1,23 @@
-import { getCommandPrefixes } from "../../parser";
 import type { MessageModule, ModuleMeta } from "../index";
 
 export const meta: ModuleMeta = {
   name: "help",
   active: true,
-  description: "Tampilkan daftar command yang tersedia.",
-  usage: "[nama command]",
+  description:
+    "Lihat kategori, daftar perintah kategori, atau detail satu perintah.",
+  usage: "[kategori | nama command]",
 };
 
 const DEFAULT_CATEGORY = "general";
+const CATEGORY_DESCRIPTIONS: Record<string, string> = {
+  downloader: "Unduh media dan transkripsi dari tautan.",
+  group: "Perintah untuk percakapan grup.",
+  image: "Edit gambar dan buat sticker.",
+  owner: "Perintah khusus pemilik bot.",
+  tools: "Alat bantu sehari-hari.",
+  utils: "Informasi dan bantuan bot.",
+  general: "Perintah lainnya.",
+};
 const collator = new Intl.Collator("id");
 
 const byName = (left: ModuleMeta, right: ModuleMeta) =>
@@ -28,63 +37,82 @@ function groupByCategory(modules: ModuleMeta[]) {
   return groups;
 }
 
-function formatCommand(module: ModuleMeta, prefix: string) {
-  const aliases = module.aliases?.length
-    ? ` (alias: ${module.aliases.join(", ")})`
-    : "";
-  return `> ${prefix}${module.name}${aliases}`;
+function formatDetail(module: ModuleMeta, prefix: string) {
+  const category = module.category ?? DEFAULT_CATEGORY;
+  const usage = module.usage?.startsWith(`.${module.name}`)
+    ? module.usage.slice(module.name.length + 1).trim()
+    : module.usage;
+  return [
+    `*${prefix}${module.name}*`,
+    `Kategori: ${categoryLabel(category)}`,
+    "",
+    module.description,
+    "",
+    "*Cara pakai*",
+    `\`${prefix}${module.name}${usage ? ` ${usage}` : ""}\``,
+    ...(module.aliases?.length
+      ? [
+          `Alias: ${module.aliases.map((alias) => `${prefix}${alias}`).join(", ")}`,
+        ]
+      : []),
+  ].join("\n");
 }
 
-function formatDetail(module: ModuleMeta, prefix: string) {
-  const lines = [
-    `*${prefix}${module.name}*`,
-    module.description,
-    `${prefix}${module.name}${module.usage ? ` ${module.usage}` : ""}`,
-  ];
-  if (module.aliases?.length) {
-    lines.push(`Alias: ${module.aliases.join(", ")}`);
-  }
-  return lines.join("\n");
+function formatCategory(category: string, group: ModuleMeta[], prefix: string) {
+  return [
+    `*${categoryLabel(category)}*`,
+    CATEGORY_DESCRIPTIONS[category] ??
+      `Perintah dalam kategori ${categoryLabel(category)}.`,
+    "",
+    ...[...group].sort(byName).map((module) => `> *${prefix}${module.name}*`),
+    "",
+  ].join("\n");
 }
 
 export const onMessage: MessageModule = async ({ message, modules }) => {
   const command = message.command();
   if (command?.name !== "help") return;
 
-  const prefixes = getCommandPrefixes();
-  const prefix = prefixes[0] ?? "";
+  const prefix = command.prefix;
+  const categories = groupByCategory(modules);
+  const query = command.args[0]?.toLowerCase().replace(/^\W+/, "");
 
-  const query = command.args?.[0]?.toLowerCase().replace(/^\W+/, "");
   if (query) {
     const found = modules.find(
       (module) =>
         module.name.toLowerCase() === query ||
         module.aliases?.some((alias) => alias.toLowerCase() === query),
     );
+    if (found) {
+      await message.reply(formatDetail(found, prefix));
+      return;
+    }
+    const category = [...categories.keys()].find(
+      (name) => name.toLowerCase() === query || categoryLabel(name) === query,
+    );
+    if (category) {
+      await message.replyWithBanner(
+        formatCategory(category, categories.get(category)!, prefix),
+      );
+      return;
+    }
     await message.reply(
-      found
-        ? formatDetail(found, prefix)
-        : `Command "${query}" tidak ditemukan. Ketik ${prefix}help untuk melihat daftar.`,
+      `"${query}" tidak ditemukan. Ketik ${prefix}help untuk melihat kategori yang tersedia.`,
     );
     return;
   }
 
-  const sections = [...groupByCategory(modules)]
-    .sort(([left], [right]) => collator.compare(left, right))
-    .map(([category, group]) => {
-      const entries = [...group]
-        .sort(byName)
-        .map((module) => formatCommand(module, prefix));
-      return `*${categoryLabel(category)}:*\n${entries.join("\n")}`;
-    });
-
-  const header = [
-    "*Relayz Bot*",
-    `> Prefix: ${prefixes.join("  ")}`,
-    `> Detail: ${prefix}help <nama command>`,
-  ].join("\n");
+  const sections = [...categories.keys()]
+    .sort((left, right) => collator.compare(left, right))
+    .map((category) => `> ${categoryLabel(category)}`);
 
   await message.sendWithBanner(
-    `${header}\n\n${sections.join("\n\n") || "Belum ada command yang tersedia."}`,
+    [
+      "*Kategori Bot*",
+      sections.join("\n") || "Belum ada kategori yang tersedia.",
+      "",
+      `Lihat kategori: ${prefix}help <kategori>`,
+      `Detail perintah: ${prefix}help <command>`,
+    ].join("\n"),
   );
 };

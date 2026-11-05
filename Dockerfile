@@ -21,6 +21,9 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     ffmpeg \
+    fontconfig \
+    fonts-liberation \
+    fonts-noto-color-emoji \
     libgomp1 \
     python3 \
     python3-venv \
@@ -35,6 +38,7 @@ COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile --production
 
 COPY src ./src
+COPY assets ./assets
 
 ENV NODE_ENV=production \
     YTDLP_PATH=/opt/yt-dlp/bin/yt-dlp \
